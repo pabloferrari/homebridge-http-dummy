@@ -8,11 +8,11 @@ module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
   HomebridgeAPI = homebridge;
-  homebridge.registerAccessory("homebridge-dummy", "DummySwitch", DummySwitch);
+  homebridge.registerAccessory("homebridge-dummy", "HttpDummySwitch", HttpDummySwitch);
 }
 
 
-function DummySwitch(log, config) {
+function HttpDummySwitch(log, config) {
   this.log = log;
   this.name = config.name;
   this.stateful = config.stateful;
@@ -25,13 +25,14 @@ function DummySwitch(log, config) {
   this.timer = null;
   this.random = config.random;
   this.disableLogging = config.disableLogging;
+  let password = config.password || '';
 
   if (this.dimmer) {
-	this._service = new Service.Lightbulb(this.name);
-	this.modelString = "Dummy Dimmer";
+  	this._service = new Service.Lightbulb(this.name);
+  	this.modelString = "Dummy Dimmer";
   } else {
-	this._service = new Service.Switch(this.name);
-	this.modelString = "Dummy Switch";
+  	this._service = new Service.Switch(this.name);
+  	this.modelString = "Dummy Switch";
   }
   
   this.informationService = new Service.AccessoryInformation();
@@ -48,35 +49,47 @@ function DummySwitch(log, config) {
   this._service.getCharacteristic(Characteristic.On)
     .on('set', this._setOn.bind(this));
   if (this.dimmer) {
-	this._service.getCharacteristic(Characteristic.Brightness)
-            .on('get', this._getBrightness.bind(this))
-            .on('set', this._setBrightness.bind(this));
+    this._service.getCharacteristic(Characteristic.Brightness)
+      .on('get', this._getBrightness.bind(this))
+      .on('set', this._setBrightness.bind(this));
   }
 
   if (this.reverse) this._service.setCharacteristic(Characteristic.On, true);
 
   if (this.stateful) {
-	var cachedState = this.storage.getItemSync(this.name);
-	if((cachedState === undefined) || (cachedState === false)) {
-		this._service.setCharacteristic(Characteristic.On, false);
-	} else {
-		this._service.setCharacteristic(Characteristic.On, true);
-	}
+  	var cachedState = this.storage.getItemSync(this.name);
+  	if((cachedState === undefined) || (cachedState === false)) {
+  		this._service.setCharacteristic(Characteristic.On, false);
+  	} else {
+  		this._service.setCharacteristic(Characteristic.On, true);
+  	}
   }
 
   if (this.dimmer) {
-	var cachedBrightness = this.storage.getItemSync(this.brightnessStorageKey);
-	if ((cachedBrightness == undefined) || cachedBrightness == 0) {
-		this._service.setCharacteristic(Characteristic.On, false);
-		this._service.setCharacteristic(Characteristic.Brightness, 0);
-	} else {
-		this._service.setCharacteristic(Characteristic.On, true);
-		this._service.setCharacteristic(Characteristic.Brightness, cachedBrightness);
-	}
+  	var cachedBrightness = this.storage.getItemSync(this.brightnessStorageKey);
+  	if ((cachedBrightness == undefined) || cachedBrightness == 0) {
+  		this._service.setCharacteristic(Characteristic.On, false);
+  		this._service.setCharacteristic(Characteristic.Brightness, 0);
+  	} else {
+  		this._service.setCharacteristic(Characteristic.On, true);
+  		this._service.setCharacteristic(Characteristic.Brightness, cachedBrightness);
+  	}
   }
+
+  HomebridgeAPI.on('didFinishLaunching', function() {
+    if (global.notificationRegistration && typeof global.notificationRegistration === "function") {
+      try {
+        global.notificationRegistration(`dummy-${config.name.toLowerCase()}`, this.handleNotification.bind(this), password);
+      } catch (error) {
+        this.log("Notification ID is already taken or another error occurred: " + error.message);
+      }
+    } else {
+      this.log("Notification registration function not available.");
+    }
+  }.bind(this));
 }
 
-DummySwitch.prototype.getServices = function() {
+HttpDummySwitch.prototype.getServices = function() {
   return [this.informationService, this._service];
 }
 
@@ -84,7 +97,7 @@ function randomize(time) {
   return Math.floor(Math.random() * (time + 1));
 }
 
-DummySwitch.prototype._getBrightness = function(callback) {
+HttpDummySwitch.prototype._getBrightness = function(callback) {
 
   if ( ! this.disableLogging ) {
 	this.log("Getting " + "brightness: " + this.brightness);
@@ -93,7 +106,7 @@ DummySwitch.prototype._getBrightness = function(callback) {
   callback(null, this.brightness);
 }
 
-DummySwitch.prototype._setBrightness = function(brightness, callback) {
+HttpDummySwitch.prototype._setBrightness = function(brightness, callback) {
 
   if ( ! this.disableLogging ) {
 	var msg = "Setting brightness: " + brightness
@@ -106,7 +119,7 @@ DummySwitch.prototype._setBrightness = function(brightness, callback) {
   callback();
 }
 
-DummySwitch.prototype._setOn = function(on, callback) {
+HttpDummySwitch.prototype._setOn = function(on, callback) {
 
   var delay = this.random ? randomize(this.time) : this.time;
   var msg = "Setting switch to " + on
